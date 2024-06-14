@@ -1,0 +1,107 @@
+func main() {
+    http.DefaultClient.Timeout = time.Second * 15
+
+    godotenv.Load()
+    captainsMap = loadCaptains()
+
+    go func() {
+        loadListings() // Initial load for listings
+        listingsTicker := time.NewTicker(60 * time.Second)
+        defer listingsTicker.Stop()
+        for range listingsTicker.C {
+            loadListings()
+        }
+    }()
+
+    go func() {
+        loadItems() // Initial load for items
+        itemsTicker := time.NewTicker(30 * time.Minute)
+        defer itemsTicker.Stop()
+        for range itemsTicker.C {
+            loadItems()
+        }
+    }()
+
+    c := twitch.NewClient("joshq00", os.Getenv("TWITCH_OAUTH_TOKEN"))
+    c.Join(strings.Split(os.Getenv("TWITCH_CHANNELS"), ",")...)
+    c.OnPrivateMessage(func(m twitch.PrivateMessage) {
+        log.Println(m.Channel, m.User.DisplayName, m.Message)
+        if strings.HasPrefix(m.Message, "!price ") {
+            playerName := strings.TrimPrefix(m.Message, "!price ")
+            cards := findCard(playerName)
+
+            if strings.Contains(playerName, " ") {
+                for _, item := range cards {
+                    c.Say(m.Channel,
+                        fmt.Sprintf("[PRICE] %s (%v) | %s %v | Buy now: %v | Sell now: %v\n", item.Item.Name, item.Item.Ovr, item.Item.Team, item.Item.Rarity, item.BestSellPrice, item.BestBuyPrice),
+                    )
+                }
+
+                if len(cards) == 0 {
+                    c.Say(m.Channel,
+                        "Player Card not found")
+                }
+            }
+        } else if strings.HasPrefix(m.Message, "!contact ") {
+            playerName := strings.TrimPrefix(m.Message, "!contact ")
+            contactItems := getPlayerContacts(playerName)
+            if contactItems != nil {
+                for _, item := range contactItems {
+                    c.Say(m.Channel,
+                        fmt.Sprintf("[CONTACT] %s (%v) | Contact vs Left: %v | Contact vs Right: %v", item.Name, item.Ovr, item.ContactLeft, item.ContactRight))
+                }
+            } else {
+                c.Say(m.Channel, "Contact information not available.")
+            }
+// all other commands added, didnt include for consciseness.
+        } else if strings.HasPrefix(m.Message, "!theme ") {
+            playerName := strings.TrimPrefix(m.Message, "!theme ")
+            eligibleCaptains := findEligibleCaptains(playerName)
+            if len(eligibleCaptains) > 0 {
+                for _, captain := range eligibleCaptains {
+                    c.Say(m.Channel,
+                        fmt.Sprintf("[THEME] %s is eligible for Captain %s: %s", playerName, captain.Name, captain.AbilityDesc))
+                }
+            } else {
+                c.Say(m.Channel, "No matching themes found for the player.")
+            }
+        }
+    })
+    c.Connect()
+}
+
+func findEligibleCaptains(playerName string) []Captain {
+    itemCache.mutex.Lock()
+    defer itemCache.mutex.Unlock()
+
+    normalizedName := strings.ToLower(RemoveAccents(playerName))
+    uuids, exists := itemCache.names[normalizedName]
+    if !exists {
+        return nil
+    }
+
+    var eligibleCaptains []Captain
+    for _, uuid := range uuids {
+        item, exists := itemCache.items[uuid]
+        if exists {
+            for _, captain := range captainsMap {
+                if isPlayerEligibleForCaptain(item, captain) {
+                    eligibleCaptains = append(eligibleCaptains, captain)
+                }
+            }
+        }
+    }
+    return eligibleCaptains
+}
+
+func isPlayerEligibleForCaptain(item Item, captain Captain) bool {
+    description := strings.ToLower(captain.AbilityDesc)
+
+    if strings.Contains(description, "switch hitter") && item.BatHand == "S" {
+        return true
+    }
+    if strings.Contains(description, "new york yankees") && item.Team == "Yankees" {
+        return true
+    }
+    return false
+}
