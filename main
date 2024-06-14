@@ -17,6 +17,8 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+var captainsMap map[string]Captain
+
 type ListingCache struct {
 	mutex    *sync.Mutex
 	listings map[string]Listing
@@ -404,6 +406,17 @@ func main() {
 			} else {
 				c.Say(m.Channel, "Strikeouts per 9 information not available.")
 			}
+		} else if strings.HasPrefix(m.Message, "!theme ") {
+			playerName := strings.TrimPrefix(m.Message, "!theme ")
+			eligibleCaptains := findEligibleCaptains(playerName)
+			if len(eligibleCaptains) > 0 {
+				for _, captain := range eligibleCaptains {
+					c.Say(m.Channel,
+						fmt.Sprintf("[THEME] %s is eligible for Captain %s: %s", playerName, captain.Name, captain.AbilityDesc))
+				}
+			} else {
+				c.Say(m.Channel, "No matching themes found for the player.")
+			}
 		}
 	})
 	c.Connect()
@@ -441,4 +454,42 @@ func findCard(playerName string) []Listing {
 		}
 	}
 	return result
+}
+
+func findEligibleCaptains(playerName string) []Captain {
+	itemCache.mutex.Lock()
+	defer itemCache.mutex.Unlock()
+
+	normalizedName := strings.ToLower(RemoveAccents(playerName))
+	uuids, exists := itemCache.names[normalizedName]
+	if !exists {
+		return nil
+	}
+
+	var eligibleCaptains []Captain
+	for _, uuid := range uuids {
+		item, exists := itemCache.items[uuid]
+		if exists {
+			for _, captain := range captainsMap {
+				if isPlayerEligibleForCaptain(item, captain) {
+					eligibleCaptains = append(eligibleCaptains, captain)
+				}
+			}
+		}
+	}
+	return eligibleCaptains
+}
+
+func isPlayerEligibleForCaptain(item Item, captain Captain) bool {
+	description := strings.ToLower(captain.AbilityDesc)
+
+	if strings.Contains(description, "switch hitter") && item.BatHand == "S" {
+		return true
+	}
+	if strings.Contains(description, "new york yankees") && item.Team == "New York Yankees" {
+		return true
+	}
+	// will be adding more later once this works
+
+	return false
 }
