@@ -1,0 +1,28 @@
+type CaptainResponse struct {
+	Page       int       `json:"page"`
+	PerPage    int       `json:"per_page"`
+	TotalPages int       `json:"total_pages"`
+	Captains   []Captain `json:"captains"`
+}
+
+type Captain struct {
+	UUID            string         `json:"uuid"`
+	Name            string         `json:"name"`
+	DisplayPosition string         `json:"display_position"`
+	Team            string         `json:"team"`
+	Ovr             int            `json:"ovr"`
+	AbilityName     string         `json:"ability_name"`
+	AbilityDesc     string         `json:"ability_desc"`
+	Boosts          []CaptainBoost `json:"boosts"`
+}
+
+type CaptainBoost struct {
+	Tier        string           `json:"tier"`
+	Description string           `json:"description"`
+	Attributes  []BoostAttribute `json:"attributes"`
+}
+
+type BoostAttribute struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
